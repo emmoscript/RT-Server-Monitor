@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE / editor
+.vscode/
+.idea/
+.DS_Store
+
+# Cursor / editor metadata
+.cursor/
+
+# Streamlit
+.streamlit/
+
+# Logs y estado en tiempo real
+rt_monitor.log
+system_state.json
+
+# Entornos / credenciales
+.env
+*.env
+
