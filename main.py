@@ -3,6 +3,7 @@ import logging
 from alert import AlertManager
 from orchestrator import Orchestrator
 from processor import Processor
+from recursion_utils import get_dependency_depth
 from server import Server
 
 
@@ -25,16 +26,42 @@ def configure_logging() -> None:
 
 def build_system() -> Orchestrator:
     """
-    Construye la instancia del sistema RT-Monitor.
-
-    Esta función centraliza la creación de componentes y sirve como punto
-    de entrada claro para futuras extensiones (threads, mutex, etc.).
+    Construye la instancia del sistema RT-Monitor con concurrencia (threads)
+    y dependencias entre servidores para el algoritmo recursivo.
     """
+    # server-1 depende de server-2, server-2 de server-3; server-3 no depende de nadie.
     servers = [
-        Server("server-1", failure_rate=0.15, invalid_data_rate=0.08),
-        Server("server-2", failure_rate=0.10, invalid_data_rate=0.05),
-        Server("server-3", failure_rate=0.05, invalid_data_rate=0.03),
+        Server(
+            "server-1",
+            failure_rate=0.15,
+            invalid_data_rate=0.08,
+            depends_on=["server-2"],
+        ),
+        Server(
+            "server-2",
+            failure_rate=0.10,
+            invalid_data_rate=0.05,
+            depends_on=["server-3"],
+        ),
+        Server(
+            "server-3",
+            failure_rate=0.05,
+            invalid_data_rate=0.03,
+            depends_on=[],
+        ),
     ]
+    servers_by_id = {s.server_id: s for s in servers}
+
+    # Mostrar profundidad de dependencias (algoritmo recursivo) al arrancar.
+    log = logging.getLogger("rt_monitor.main")
+    for s in servers:
+        depth = get_dependency_depth(s.server_id, servers_by_id)
+        log.info(
+            "Profundidad de dependencias de %s: %d (depends_on=%s)",
+            s.server_id,
+            depth,
+            s.depends_on,
+        )
 
     processor = Processor(
         cpu_threshold=85.0,
@@ -56,10 +83,8 @@ def build_system() -> Orchestrator:
 
 def main() -> None:
     """
-    Punto de entrada para la demostración de la Semana 9.
-
-    Se ejecutan un número finito de iteraciones para que el programa sea fácil de probar.
-    Para simular un sistema "permanente" se puede cambiar iterations=None en el run().
+    Punto de entrada. Ejecuta el monitoreo concurrente (Semana 10:
+    un thread por servidor). Se detiene con Ctrl+C.
     """
     configure_logging()
 

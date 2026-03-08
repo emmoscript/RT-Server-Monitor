@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from typing import Iterable
 
@@ -13,11 +14,8 @@ class Orchestrator:
     """
     Orquestador / Event Manager.
 
-    Se encarga de:
-    - leer métricas de varios servidores,
-    - delegar el análisis al Processor,
-    - delegar notificaciones al AlertManager,
-    - manejar excepciones sin detener el sistema.
+    Coordina la ejecución concurrente: cada servidor se ejecuta en su propio
+    thread. El orquestador lanza los threads y maneja la señal de parada (Ctrl+C).
     """
 
     def __init__(
@@ -31,33 +29,64 @@ class Orchestrator:
         self.processor = processor
         self.alert_manager = alert_manager
         self.logger = logger or logging.getLogger("rt_monitor.orchestrator")
+        self._stop_event = threading.Event()
 
     def run(self, iterations: int | None = None, delay_seconds: float = 1.0) -> None:
         """
-        Ejecuta el ciclo principal de monitoreo.
+        Ejecuta el monitoreo de forma concurrente: un thread por servidor.
 
-        :param iterations: Número de ciclos de monitoreo. Si es None, corre indefinidamente.
-        :param delay_seconds: Tiempo de espera entre ciclos (simulación de tiempo real).
+        Cada thread ejecuta ciclos de lectura → procesamiento → alertas → estado
+        para su servidor, con delay_seconds entre ciclos. El orquestador espera
+        hasta recibir Ctrl+C y entonces detiene todos los threads.
+
+        :param iterations: Si es un entero, cada thread hace como máximo ese número
+            de ciclos; si es None, corre hasta que se detenga con Ctrl+C.
+        :param delay_seconds: Pausa entre ciclos dentro de cada thread.
         """
-        cycle = 0
         self.logger.info(
-            "Iniciando orquestador con %d servidores. Iteraciones=%s",
+            "Iniciando orquestador concurrente con %d servidores (1 thread por servidor).",
             len(self.servers),
-            "inf" if iterations is None else iterations,
         )
+        self._stop_event.clear()
+
+        threads = []
+        for server in self.servers:
+            t = threading.Thread(
+                target=self._server_worker,
+                args=(server, iterations, delay_seconds),
+                name=f"monitor-{server.server_id}",
+                daemon=False,
+            )
+            threads.append(t)
+            t.start()
 
         try:
-            while iterations is None or cycle < iterations:
-                cycle += 1
-                self.logger.debug("Ciclo de monitoreo #%d", cycle)
-
-                for server in self.servers:
-                    self._handle_server_cycle(server)
-
-                time.sleep(delay_seconds)
+            while True:
+                time.sleep(1)
         except KeyboardInterrupt:
-            # Permite detener el sistema manualmente sin stacktrace ruidoso.
-            self.logger.info("Ejecución interrumpida manualmente por el usuario.")
+            self.logger.info("Señal de parada recibida; deteniendo threads...")
+            self._stop_event.set()
+
+        for t in threads:
+            t.join(timeout=2.0)
+        self.logger.info("Orquestador detenido.")
+
+    def _server_worker(
+        self,
+        server: Server,
+        iterations: int | None,
+        delay_seconds: float,
+    ) -> None:
+        """
+        Bucle que ejecuta un thread: ciclos de monitoreo para un solo servidor.
+        """
+        cycle = 0
+        while not self._stop_event.is_set():
+            if iterations is not None and cycle >= iterations:
+                break
+            cycle += 1
+            self._handle_server_cycle(server)
+            self._stop_event.wait(timeout=delay_seconds)
 
     def _handle_server_cycle(self, server: Server) -> None:
         """Gestiona un ciclo completo (lectura + proceso + alerta) para un servidor."""

@@ -1,10 +1,13 @@
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
 STATE_FILE = Path(__file__).with_name("system_state.json")
+# Bloqueo para escrituras concurrentes (varios threads actualizando estado).
+_state_lock = threading.Lock()
 
 
 def _default_state() -> Dict[str, Any]:
@@ -42,9 +45,21 @@ def update_server_state(
     """
     Actualiza el estado global de un servidor concreto y lo persiste en disco.
 
-    Esta función la utilizará el orquestador después de cada ciclo.
-    El dashboard solo llama a load_state() para leer este archivo.
+    Thread-safe: usa un lock para que varios threads puedan actualizar
+    distintos servidores sin corromper el JSON.
     """
+    with _state_lock:
+        _update_server_state_unsafe(server_id, metrics, alerts, online, error)
+
+
+def _update_server_state_unsafe(
+    server_id: str,
+    metrics: Optional[Dict[str, Any]] = None,
+    alerts: Optional[List[str]] = None,
+    online: Optional[bool] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Actualiza estado y persiste en disco. Debe llamarse con _state_lock adquirido."""
     state = load_state()
     servers: Dict[str, Any] = state.setdefault("servers", {})
 

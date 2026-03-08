@@ -1,5 +1,5 @@
 import random
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 from exceptions import ServerOfflineException, InvalidMetricException
 
@@ -8,19 +8,28 @@ class Server:
     """
     Simulador de servidor que genera métricas periódicamente.
 
-    Esta clase está pensada para ser usada por el orquestador en un bucle
-    (o en hilos en semanas posteriores).
+    Pensado para ejecutarse en un thread propio; el orquestador coordina
+    varios servidores de forma concurrente.
     """
 
-    def __init__(self, server_id: str, failure_rate: float = 0.1, invalid_data_rate: float = 0.05) -> None:
+    def __init__(
+        self,
+        server_id: str,
+        failure_rate: float = 0.1,
+        invalid_data_rate: float = 0.05,
+        depends_on: Optional[List[str]] = None,
+    ) -> None:
         """
         :param server_id: Identificador lógico del servidor.
         :param failure_rate: Probabilidad de que el servidor esté "offline" en un ciclo.
         :param invalid_data_rate: Probabilidad de enviar datos corruptos/invalidos.
+        :param depends_on: Lista de server_id de los que este servidor "depende"
+            (para el algoritmo recursivo de profundidad de dependencias).
         """
         self.server_id = server_id
         self.failure_rate = failure_rate
         self.invalid_data_rate = invalid_data_rate
+        self.depends_on = depends_on or []
 
     def generate_metrics(self) -> Dict[str, Any]:
         """
