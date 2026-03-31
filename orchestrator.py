@@ -1,12 +1,13 @@
 import logging
 import threading
 import time
-from typing import Iterable
+from typing import Iterable, Optional
 
 from exceptions import ServerOfflineException, InvalidMetricException, ProcessingException
 from server import Server
 from processor import Processor
 from alert import AlertManager
+from realtime_database import RealtimeDatabaseCluster
 from system_state import update_server_state
 
 
@@ -23,11 +24,13 @@ class Orchestrator:
         servers: Iterable[Server],
         processor: Processor,
         alert_manager: AlertManager,
+        database_cluster: Optional[RealtimeDatabaseCluster] = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.servers = list(servers)
         self.processor = processor
         self.alert_manager = alert_manager
+        self.database_cluster = database_cluster
         self.logger = logger or logging.getLogger("rt_monitor.orchestrator")
         self._stop_event = threading.Event()
 
@@ -108,6 +111,14 @@ class Orchestrator:
                 online=True,
                 error=None,
             )
+            if self.database_cluster:
+                self.database_cluster.persist_server_event(
+                    server_id=server.server_id,
+                    metrics=metrics,
+                    alerts=alerts,
+                    online=True,
+                    error=None,
+                )
 
         except ServerOfflineException as exc:
             # Error controlado: el servidor está "caído", pero el sistema sigue.
@@ -117,6 +128,14 @@ class Orchestrator:
                 online=False,
                 error=str(exc),
             )
+            if self.database_cluster:
+                self.database_cluster.persist_server_event(
+                    server_id=server.server_id,
+                    metrics=None,
+                    alerts=[],
+                    online=False,
+                    error=str(exc),
+                )
 
         except InvalidMetricException as exc:
             # Datos corruptos: se registran y se continúa.
@@ -126,6 +145,14 @@ class Orchestrator:
                 online=False,
                 error=str(exc),
             )
+            if self.database_cluster:
+                self.database_cluster.persist_server_event(
+                    server_id=server.server_id,
+                    metrics=None,
+                    alerts=[],
+                    online=False,
+                    error=str(exc),
+                )
 
         except ProcessingException as exc:
             # Falla en el procesamiento, se registra pero no se interrumpe el sistema.
@@ -135,6 +162,14 @@ class Orchestrator:
                 online=True,
                 error=str(exc),
             )
+            if self.database_cluster:
+                self.database_cluster.persist_server_event(
+                    server_id=server.server_id,
+                    metrics=None,
+                    alerts=[],
+                    online=True,
+                    error=str(exc),
+                )
 
         except Exception as exc:  # noqa: BLE001 - captura global intencional
             # Cualquier otro error inesperado también se maneja para preservar la ejecución.
@@ -144,4 +179,12 @@ class Orchestrator:
                 online=False,
                 error=str(exc),
             )
+            if self.database_cluster:
+                self.database_cluster.persist_server_event(
+                    server_id=server.server_id,
+                    metrics=None,
+                    alerts=[],
+                    online=False,
+                    error=str(exc),
+                )
 

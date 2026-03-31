@@ -16,14 +16,24 @@ env/
 # Cursor / editor metadata
 .cursor/
 
+# Claude / herramientas locales
+.claude/
+
 # Streamlit
 .streamlit/
 
 # Logs y estado en tiempo real
 rt_monitor.log
 system_state.json
+db_data/
 
 # Entornos / credenciales
 .env
 *.env
+
+# Documentos de actividades / entregas académicas (diseño, informes, guiones de video).
+# El código del repo queda limpio; estos archivos puedes subirlos aparte o adjuntarlos en la plataforma del curso.
+documento_*.md
+informe_*.md
+video_guion*.md
 

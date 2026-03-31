@@ -3,8 +3,14 @@ import logging
 from alert import AlertManager
 from orchestrator import Orchestrator
 from processor import Processor
+from realtime_database import RealtimeDatabaseCluster
 from recursion_utils import get_dependency_depth
 from server import Server
+
+try:
+    import psutil  # noqa: F401
+except ImportError:
+    psutil = None
 
 
 def configure_logging() -> None:
@@ -29,13 +35,15 @@ def build_system() -> Orchestrator:
     Construye la instancia del sistema RT-Monitor con concurrencia (threads)
     y dependencias entre servidores para el algoritmo recursivo.
     """
-    # server-1 depende de server-2, server-2 de server-3; server-3 no depende de nadie.
+    # server-1 = nodo principal: métricas reales de esta PC (psutil) si está instalado.
+    # server-2 y server-3 siguen simulados (aleatorio + fallos simulados).
     servers = [
         Server(
             "server-1",
-            failure_rate=0.15,
-            invalid_data_rate=0.08,
+            failure_rate=0.0,
+            invalid_data_rate=0.0,
             depends_on=["server-2"],
+            use_host_metrics=True,
         ),
         Server(
             "server-2",
@@ -52,8 +60,16 @@ def build_system() -> Orchestrator:
     ]
     servers_by_id = {s.server_id: s for s in servers}
 
-    # Mostrar profundidad de dependencias (algoritmo recursivo) al arrancar.
     log = logging.getLogger("rt_monitor.main")
+    if psutil is None:
+        log.warning(
+            "psutil no está instalado: el servidor principal usará simulación aleatoria. "
+            "Para métricas reales de tu equipo: pip install psutil"
+        )
+    else:
+        log.info("Servidor principal (server-1) usa métricas reales del host (CPU/RAM) vía psutil.")
+
+    # Mostrar profundidad de dependencias (algoritmo recursivo) al arrancar.
     for s in servers:
         depth = get_dependency_depth(s.server_id, servers_by_id)
         log.info(
@@ -70,11 +86,15 @@ def build_system() -> Orchestrator:
     )
 
     alert_manager = AlertManager()
+    database_cluster = RealtimeDatabaseCluster()
+    # Simular fallo de una réplica para demostrar alta disponibilidad.
+    database_cluster.set_node_availability("node_c", False)
 
     orchestrator = Orchestrator(
         servers=servers,
         processor=processor,
         alert_manager=alert_manager,
+        database_cluster=database_cluster,
         logger=logging.getLogger("rt_monitor.orchestrator"),
     )
 

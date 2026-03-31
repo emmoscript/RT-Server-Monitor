@@ -74,6 +74,7 @@ def _update_server_state_unsafe(
             "last_update": 0.0,
             "alerts": [],
             "last_error": None,
+            "metrics_source": None,
         },
     )
 
@@ -82,6 +83,7 @@ def _update_server_state_unsafe(
         server_state["cpu"] = metrics.get("cpu")
         server_state["memory"] = metrics.get("memory")
         server_state["temperature"] = metrics.get("temperature")
+        server_state["metrics_source"] = metrics.get("source", "simulated")
 
     # Actualizar estado online/offline
     if online is not None:
